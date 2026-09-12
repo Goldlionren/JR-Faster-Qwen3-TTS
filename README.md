@@ -1,6 +1,6 @@
 # JR-Faster-Qwen3-TTS
 
-> 基于 [`andimarafioti/faster-qwen3-tts`](https://github.com/andimarafioti/faster-qwen3-tts) 的兼容增强版本。  
+> 基于 [`andimarafioti/faster-qwen3-tts`](https://github.com/andimarafioti/faster-qwen3-tts) 的兼容增强版本。
 > 重点面向 **Hermes Agent、Telegram Bot、角色型 AI Agent**，增加 **每个音色独立的 `instruct` 语气控制、OpenAI-compatible Ogg/Opus 输出，以及 Hermes → Telegram 原生语音消息链路**。
 >
 > A compatibility-focused fork of `faster-qwen3-tts` for **Hermes, Telegram, and character/agent TTS**, adding **per-voice style instructions and real OpenAI-compatible Ogg/Opus output**.
@@ -650,19 +650,19 @@ JR-Faster-Qwen3-TTS keeps the upstream CUDA-graph inference engine intact and fo
 
 The main additions are:
 
-1. **Per-voice `instruct` in the OpenAI-compatible named voice path**  
+1. **Per-voice `instruct` in the OpenAI-compatible named voice path**
    A voice profile can define its own speaking style/personality. The instruction is forwarded to both streaming and non-streaming voice cloning.
 
-2. **Real `response_format=opus` support**  
+2. **Real `response_format=opus` support**
    The server encodes genuine Ogg/Opus using FFmpeg `libopus` and returns `audio/ogg`.
 
-3. **Hermes v0.20.6 integration**  
+3. **Hermes v0.20.6 integration**
    Hermes can use this server directly through its native OpenAI TTS provider.
 
-4. **Telegram-native voice delivery**  
+4. **Telegram-native voice delivery**
    Hermes maps Telegram `.ogg` output to `response_format=opus`; this fork implements that format directly.
 
-5. **Explicit UTF-8 loading for named voice JSON on Windows**  
+5. **Explicit UTF-8 loading for named voice JSON on Windows**
    Non-ASCII voice profile content no longer depends on the Windows default locale.
 
 ## Hermes + Telegram
