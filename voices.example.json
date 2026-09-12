@@ -1,0 +1,9 @@
+{
+  "example": {
+    "ref_audio": "<PATH_TO_REFERENCE_AUDIO>",
+    "ref_text": "<REFERENCE_TRANSCRIPT>",
+    "language": "Auto",
+    "chunk_size": 4,
+    "instruct": "<OPTIONAL_STYLE_INSTRUCTION>"
+  }
+}

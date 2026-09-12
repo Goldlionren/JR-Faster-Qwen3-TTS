@@ -10,3 +10,21 @@ __pycache__/
 outputs/
 artifacts/
 packages/qwentts_cpp_python/
+
+# JR local/private material
+xiaowu_voices.json
+_jr_change_backup/
+*.bak-local
+*.bak-instruct-*
+*.flac
+*.ogg
+*.pcm
+*.m4a
+*.aac
+regression_test.*
+xiaowu_*_test.*
+start_xiaowu_tts_api.bat
+faster_qwen3_tts.egg-info/
+JR-Change-Backups/
+!voices.example.json
+!start_tts_api.example.bat

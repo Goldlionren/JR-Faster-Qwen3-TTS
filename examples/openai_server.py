@@ -42,6 +42,7 @@ import logging
 import os
 import queue
 import struct
+import subprocess
 import sys
 import threading
 from typing import AsyncGenerator, Optional
@@ -138,6 +139,57 @@ def _to_mp3_bytes(pcm: np.ndarray, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
+def _to_opus_bytes(pcm: np.ndarray, sample_rate: int) -> bytes:
+    """Encode float32 PCM to a real Ogg/Opus stream using FFmpeg + libopus."""
+
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-nostdin",
+        "-f", "s16le",
+        "-ar", str(sample_rate),
+        "-ac", "1",
+        "-i", "pipe:0",
+        "-c:a", "libopus",
+        "-b:a", "32k",
+        "-vbr", "on",
+        "-application", "voip",
+        "-compression_level", "10",
+        "-f", "ogg",
+        "pipe:1",
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            input=_to_pcm16(pcm),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="response_format='opus' requires FFmpeg with libopus",
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=500,
+            detail="FFmpeg Opus encoding timed out",
+        )
+
+    if result.returncode != 0 or not result.stdout:
+        error = result.stderr.decode("utf-8", errors="replace").strip()
+        raise HTTPException(
+            status_code=500,
+            detail=f"FFmpeg Opus encoding failed: {error[:500]}",
+        )
+
+    return result.stdout
+
+
 # ---------------------------------------------------------------------------
 # Voice resolution
 # ---------------------------------------------------------------------------
@@ -185,6 +237,7 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
                     ref_audio=voice_cfg["ref_audio"],
                     ref_text=voice_cfg.get("ref_text", ""),
                     chunk_size=voice_cfg.get("chunk_size", 12),
+                    instruct=voice_cfg.get("instruct"),
                     non_streaming_mode=False,
                 ):
                     q.put(chunk)
@@ -224,22 +277,29 @@ async def create_speech(req: SpeechRequest):
         raise HTTPException(status_code=400, detail="'input' text is empty")
 
     voice_cfg = resolve_voice(req.voice)
+    logger.info(
+        "TTS request: voice=%s chunk_size=%s instruct=%r",
+        req.voice,
+        voice_cfg.get("chunk_size"),
+        voice_cfg.get("instruct"),
+    )
     fmt = req.response_format.lower()
 
     _CONTENT_TYPES = {
         "wav": "audio/wav",
         "pcm": "audio/pcm",
         "mp3": "audio/mpeg",
+        "opus": "audio/ogg",
     }
     if fmt not in _CONTENT_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"response_format {fmt!r} not supported. Use: wav, pcm, mp3",
+            detail=f"response_format {fmt!r} not supported. Use: wav, pcm, mp3, opus",
         )
     content_type = _CONTENT_TYPES[fmt]
 
-    # --- MP3: generate all audio, then encode (non-streaming) ---
-    if fmt == "mp3":
+    # --- MP3 / Opus: generate all audio, then encode (non-streaming) ---
+    if fmt in {"mp3", "opus"}:
         loop = asyncio.get_event_loop()
 
         def _generate():
@@ -249,11 +309,22 @@ async def create_speech(req: SpeechRequest):
                     language=voice_cfg.get("language", "Auto"),
                     ref_audio=voice_cfg["ref_audio"],
                     ref_text=voice_cfg.get("ref_text", ""),
+                    instruct=voice_cfg.get("instruct"),
                 )
 
         audio_arrays, sr = await loop.run_in_executor(None, _generate)
         audio = audio_arrays[0] if audio_arrays else np.zeros(1, dtype=np.float32)
-        return Response(content=_to_mp3_bytes(audio, sr), media_type=content_type)
+
+        if fmt == "opus":
+            return Response(
+                content=_to_opus_bytes(audio, sr),
+                media_type=content_type,
+            )
+
+        return Response(
+            content=_to_mp3_bytes(audio, sr),
+            media_type=content_type,
+        )
 
     # --- WAV / PCM: stream chunks as they are generated ---
     async def audio_stream():
@@ -316,7 +387,7 @@ def main():
 
     # Build voice registry
     if args.voices:
-        with open(args.voices) as f:
+        with open(args.voices, encoding="utf-8") as f:
             voices = json.load(f)
         default_voice = next(iter(voices))
         logger.info("Loaded %d voice(s) from %s", len(voices), args.voices)
